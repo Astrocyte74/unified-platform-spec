@@ -70,6 +70,9 @@ jobs:
               return m.number;
             }
 
+            // Add delay function to prevent rate limiting
+            const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
             for (const t of tasks) {
               const labels = [];
               if (t.milestone?.match(/^Phase 0/)) labels.push('phase-0');
@@ -85,6 +88,7 @@ jobs:
                     owner: context.repo.owner, repo: context.repo.repo,
                     name: L, color: 'ededed'
                   });
+                  await delay(100); // 100ms delay between label creations
                 } catch (e) {}
               }
 
@@ -107,6 +111,7 @@ jobs:
                   milestone: milestoneNumber
                 });
                 issueNumber = created.data.number;
+                console.log(`Created issue: ${t.title}`);
               } else {
                 await github.rest.issues.update({
                   owner: context.repo.owner, repo: context.repo.repo,
@@ -115,7 +120,11 @@ jobs:
                   labels,
                   milestone: milestoneNumber
                 });
+                console.log(`Updated issue: ${t.title}`);
               }
+
+              // Add delay between issue operations to prevent rate limiting
+              await delay(500); // 500ms delay between each issue
             }
 
       - name: Done
