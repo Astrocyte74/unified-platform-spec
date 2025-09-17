@@ -128,4 +128,4 @@ jobs:
             }
 
       - name: Done
-        run: echo "Issues synced from tasks.md successfully ✅"
+        run: echo "Issues synced from tasks.md with rate limiting ✅"
