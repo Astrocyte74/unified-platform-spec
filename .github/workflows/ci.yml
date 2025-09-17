@@ -1,0 +1,108 @@
+name: CI Pipeline (T-000f)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ci:
+    name: Tests + Home Inspection
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ai_user
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ai_infographic
+        ports:
+          - 5432:5432
+        # healthcheck is provided by image; allow some time for startup
+        options: >-
+          --health-cmd="pg_isready -U ai_user -d ai_infographic"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+
+    env:
+      DATABASE_URL: postgresql://ai_user:postgres@localhost:5432/ai_infographic
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Optionally build Roots_Convert & AInfographics.v2 containers
+        run: |
+          set -eux
+          if [ -d "Roots_Convert" ]; then
+            echo "Building Roots_Convert container (if Dockerfile present)..."
+            if [ -f "Roots_Convert/Dockerfile" ]; then
+              docker build -t roots_convert:ci Roots_Convert
+            else
+              echo "No Dockerfile in Roots_Convert, skipping docker build."
+            fi
+          else
+            echo "Roots_Convert directory not present, skipping."
+          fi
+
+          if [ -d "AInfographics.v2" ]; then
+            echo "Building AInfographics.v2 container (if Dockerfile present)..."
+            if [ -f "AInfographics.v2/Dockerfile" ]; then
+              docker build -t ainfographics_v2:ci AInfographics.v2
+            else
+              echo "No Dockerfile in AInfographics.v2, skipping docker build."
+            fi
+          else
+            echo "AInfographics.v2 directory not present, skipping."
+          fi
+
+      - name: Wait for Postgres to be ready
+        run: |
+          set -eu
+          # Loop until pg_isready reports ready (service health uses host port)
+          for i in $(seq 1 30); do
+            pg_isready -h localhost -p 5432 -U ai_user -d ai_infographic && break || sleep 1
+          done
+          pg_isready -h localhost -p 5432 -U ai_user -d ai_infographic
+
+      - name: Install test & inspection dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ci/requirements.txt
+          pip install pytest
+
+      - name: Run unit tests (pytest)
+        run: |
+          set -eux
+          mkdir -p test-results
+          pytest --junitxml=test-results/junit.xml
+        continue-on-error: false
+
+      - name: Run Home Inspection (integrity SQL checks + latency)
+        id: home_inspect
+        run: |
+          set -eux
+          python ci/run_home_inspection.py --report ci/inspection_report.json --db-url "${{ env.DATABASE_URL }}"
+
+      - name: Upload test results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: test-results
+
+      - name: Upload inspection report
+        uses: actions/upload-artifact@v4
+        with:
+          name: home-inspection-report
+          path: ci/inspection_report.json
+
+      - name: Show inspection report
+        if: always()
+        run: |
+          echo "=== Inspection Report ==="
+          cat ci/inspection_report.json || true

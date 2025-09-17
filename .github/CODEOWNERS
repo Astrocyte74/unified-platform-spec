@@ -1,0 +1,10 @@
+# Global repository ownership
+* @Astrocyte74
+
+# Project-specific areas
+/AInfographics.v2/**      @Astrocyte74
+/Roots_Convert/**         @Astrocyte74
+
+# Critical infrastructure
+/.github/workflows/**     @Astrocyte74
+/ci/**                    @Astrocyte74

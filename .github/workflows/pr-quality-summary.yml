@@ -1,0 +1,106 @@
+name: PR Quality Summary
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline (T-000f)"]   # Must match the name in ci.yml
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    # Only summarize PR-triggered CI runs
+    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+
+    steps:
+      - name: Install jq & unzip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq unzip
+
+      - name: Download inspection artifact
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run_id = context.payload.workflow_run.id;
+            const { data: arts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner, repo: context.repo.repo, run_id
+            });
+
+            // Artifact name from CI workflow
+            const artifact = arts.artifacts.find(a => a.name === 'home-inspection-report');
+            if (!artifact) {
+              core.setFailed('No artifact named "home-inspection-report" found.');
+              return;
+            }
+
+            const zip = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner, repo: context.repo.repo,
+              artifact_id: artifact.id, archive_format: 'zip'
+            });
+
+            const fs = require('fs');
+            fs.writeFileSync('report.zip', Buffer.from(zip.data));
+
+      - name: Unzip & parse score
+        id: parse
+        run: |
+          unzip -o report.zip -d report >/dev/null 2>&1 || true
+
+          # The CI writes to ci/inspection_report.json
+          if [ -f report/ci/inspection_report.json ]; then
+            # Extract boolean 'ok' status and any percentage if available
+            STATUS=$(jq -r '.ok // false' report/ci/inspection_report.json)
+            # Try to get a percentage score if available, otherwise show pass/fail
+            SCORE=$(jq -r '.overallHealth.percentage // (.ok | if . then "✅ PASS" else "❌ FAIL" end)' report/ci/inspection_report.json)
+          elif [ -f report/inspection_report.json ]; then
+            # Alternative path if uploaded differently
+            STATUS=$(jq -r '.ok // false' report/inspection_report.json)
+            SCORE=$(jq -r '.overallHealth.percentage // (.ok | if . then "✅ PASS" else "❌ FAIL" end)' report/inspection_report.json)
+          else
+            STATUS="unknown"
+            SCORE="❓ No report found"
+          fi
+
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+
+      - name: Comment/Update PR with score
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.workflow_run.pull_requests?.[0];
+            if (!pr) { return; }
+
+            const status = `${{ steps.parse.outputs.status }}`; // 'true' | 'false' | 'unknown'
+            const score  = `${{ steps.parse.outputs.score }}`;
+
+            const header = "### 🏠 Home Inspection";
+            const body = [
+              header,
+              `**Status:** ${status === 'true' ? '✅ Passing' : status === 'false' ? '❌ Failing' : '❓ Unknown'}`,
+              `**Score:** ${score}`,
+              `**Artifacts:** see **home-inspection-report** in the [CI run](${context.payload.workflow_run.html_url})`,
+              ``,
+              `> Merges remain blocked until all required checks are green.`
+            ].join('\n');
+
+            // Upsert: edit an existing comment with our header, otherwise create new
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, per_page: 100
+            });
+            const existing = comments.find(c => c.body && c.body.startsWith(header));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, body
+              });
+            }
