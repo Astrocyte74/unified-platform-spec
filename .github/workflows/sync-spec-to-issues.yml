@@ -119,4 +119,4 @@ jobs:
             }
 
       - name: Done
-        run: echo "Issues synced from tasks.md ✅"
+        run: echo "Issues synced from tasks.md successfully ✅"
