@@ -6,6 +6,7 @@ on:
     types: [completed]
 
 permissions:
+  actions: read          # Required to read artifacts from CI runs
   contents: read
   issues: write
   pull-requests: write
