@@ -11,9 +11,17 @@ on:
         required: true
         default: "."
       model:
-        description: "OpenAI model (e.g., gpt-4.1, gpt-4o, gpt-4o-mini)"
-        required: false
-        default: "gpt-4.1"
+        description: "Choose OpenAI model"
+        required: true
+        type: choice
+        default: "gpt-5-mini"
+        options:
+          - gpt-5-nano
+          - gpt-5-mini
+          - gpt-5
+          - gpt-4.1
+          - gpt-4o
+          - gpt-4o-mini
 
 jobs:
   run-task:

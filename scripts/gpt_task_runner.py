@@ -5,7 +5,7 @@ from openai import OpenAI
 ROOT = pathlib.Path(".")
 TASK_ID = os.environ["TASK_ID"]
 WORKING_REPO = os.environ.get("WORKING_REPO", ".")
-MODEL = os.environ.get("OPENAI_MODEL", "gpt-4.1")
+MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
 
 def read(p):
     return pathlib.Path(p).read_text(encoding="utf-8")

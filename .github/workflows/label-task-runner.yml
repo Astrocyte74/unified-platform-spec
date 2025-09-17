@@ -53,7 +53,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TASK_ID: ${{ steps.parse.outputs.task_id }}
           WORKING_REPO: .
-          OPENAI_MODEL: gpt-4.1
+          OPENAI_MODEL: gpt-5-mini
         run: |
           python scripts/gpt_task_runner.py
 
