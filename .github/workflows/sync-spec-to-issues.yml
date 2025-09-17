@@ -96,13 +96,13 @@ jobs:
 
               const milestoneNumber = t.milestone ? await ensureMilestone(t.milestone) : undefined;
 
-              const body = t.body + '\n\n_Checklist:_\n- [ ] Implementation complete\n- [ ] Tests passing\n- [ ] Home inspection >90%\n- [ ] Git commit with ' + t.id + ' reference';
+              const issueBody = t.body + '\n\n_Checklist:_\n- [ ] Implementation complete\n- [ ] Tests passing\n- [ ] Home inspection >90%\n- [ ] Git commit with ' + t.id + ' reference';
 
               if (!issueNumber) {
                 const created = await github.rest.issues.create({
                   owner: context.repo.owner, repo: context.repo.repo,
                   title: t.title,
-                  body,
+                  body: issueBody,
                   labels,
                   milestone: milestoneNumber
                 });
@@ -111,7 +111,7 @@ jobs:
                 await github.rest.issues.update({
                   owner: context.repo.owner, repo: context.repo.repo,
                   issue_number: issueNumber,
-                  body,
+                  body: issueBody,
                   labels,
                   milestone: milestoneNumber
                 });
