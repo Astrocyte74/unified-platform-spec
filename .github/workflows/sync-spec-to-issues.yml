@@ -96,13 +96,7 @@ jobs:
 
               const milestoneNumber = t.milestone ? await ensureMilestone(t.milestone) : undefined;
 
-              const body = `${t.body}
-
-_Checklist:_
-- [ ] Implementation complete
-- [ ] Tests passing
-- [ ] Home inspection >90%
-- [ ] Git commit with ${t.id} reference`;
+              const body = t.body + '\n\n_Checklist:_\n- [ ] Implementation complete\n- [ ] Tests passing\n- [ ] Home inspection >90%\n- [ ] Git commit with ' + t.id + ' reference';
 
               if (!issueNumber) {
                 const created = await github.rest.issues.create({
