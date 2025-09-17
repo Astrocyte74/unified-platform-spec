@@ -1,0 +1,96 @@
+name: Label-triggered AI Runner
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  run-on-label:
+    if: github.event.label.name == 'ai-run'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Extract T-ID from issue title
+        id: parse
+        run: |
+          title="${{ github.event.issue.title }}"
+          if [[ "$title" =~ \(T-[0-9]{3}[a-z]?\) ]]; then
+            tid=$(echo "$title" | sed -n 's/.*(\(T-[0-9][0-9][0-9][a-z]*\)).*/\1/p')
+            echo "task_id=$tid" >> $GITHUB_OUTPUT
+          else
+            echo "No T-ID found in issue title"; exit 1
+          fi
+
+      - name: Post start comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `🤖 Starting AI run for **${{ steps.parse.outputs.task_id }}**…`
+            });
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install openai regex
+
+      - name: Run GPT task
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TASK_ID: ${{ steps.parse.outputs.task_id }}
+          WORKING_REPO: .
+          OPENAI_MODEL: gpt-4.1
+        run: |
+          python scripts/gpt_task_runner.py
+
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="feat/${{ steps.parse.outputs.task_id }}-gpt"
+          git config user.name "ai-runner"
+          git config user.email "ai-runner@users.noreply.github.com"
+          git checkout -b "$BRANCH" || true
+          git add -A
+          git commit -m "${{ steps.parse.outputs.task_id }}: GPT patch" || echo "Nothing to commit"
+          git push -u origin "$BRANCH" || true
+          gh pr create --title "${{ steps.parse.outputs.task_id }}: GPT implementation" \
+            --body "Automated patch by AI Task Runner.\nTask: ${{ steps.parse.outputs.task_id }}" \
+            --base main || true
+
+      - name: Comment PR link & clean up label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner, repo: context.repo.repo, state: 'open', head: `${context.repo.owner}:feat/${{ steps.parse.outputs.task_id }}-gpt`
+            });
+            const link = prs.length ? prs[0].html_url : '(no changes created)';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `✅ Run complete. PR: ${link}`
+            });
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.payload.issue.number, name: 'ai-run'
+            });
