@@ -1,0 +1,74 @@
+name: GPT Task Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: "Task ID (e.g., T-001)"
+        required: true
+      working_repo:
+        description: "Target folder to change (AInfographics.v2 or Roots_Convert or .)"
+        required: true
+        default: "."
+      model:
+        description: "OpenAI model (e.g., gpt-4.1, gpt-4o, gpt-4o-mini)"
+        required: false
+        default: "gpt-4.1"
+
+jobs:
+  run-task:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install openai regex
+
+      - name: Run GPT task
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TASK_ID: ${{ github.event.inputs.task_id }}
+          WORKING_REPO: ${{ github.event.inputs.working_repo }}
+          OPENAI_MODEL: ${{ github.event.inputs.model }}
+        run: |
+          python scripts/gpt_task_runner.py
+
+      - name: Quick inspection hook (optional)
+        if: success()
+        run: |
+          if [ "${{ github.event.inputs.working_repo }}" = "AInfographics.v2" ]; then
+            cd AInfographics.v2
+            npm ci
+            # Use your human-friendly inspector (Linux-friendly)
+            node scripts/inspect-for-humans.js || true
+          fi
+
+      - name: Install GitHub CLI
+        uses: cli/cli-action@v2
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="feat/${{ github.event.inputs.task_id }}-gpt"
+          git config user.name "ai-runner"
+          git config user.email "ai-runner@users.noreply.github.com"
+          git checkout -b "$BRANCH" || true
+          git add -A
+          git commit -m "${{ github.event.inputs.task_id }}: GPT patch" || echo "Nothing to commit"
+          git push -u origin "$BRANCH" || true
+          gh pr create --title "${{ github.event.inputs.task_id }}: GPT implementation" \
+            --body "Automated patch by GPT Task Runner.\nTask: ${{ github.event.inputs.task_id }}\nModel: ${{ github.event.inputs.model }}" \
+            --base main || true
