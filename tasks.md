@@ -1,4 +1,4 @@
-<!-- SPEC-KIT STARTER TASKS -->
+<!-- SPEC-KIT STARTER TASKS - Updated -->
 
 # Unified Platform Implementation Tasks
 
